@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
+<title>Pelacak Gerak Fisika Layar Penuh</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #1a1a2e;
+    --bg2: #16213e;
+    --bg3: #0f3460;
+    --panel: #1e2a45;
+    --panel2: #243355;
+    --accent: #7f77dd;
+    --accent2: #534ab7;
+    --teal: #1d9e75;
+    --coral: #d85a30;
+    --amber: #ef9f27;
+    --text: #e8eaf0;
+    --text2: #9ba5be;
+    --text3: #5d6a85;
+    --border: rgba(127,119,221,0.18);
+    --border2: rgba(127,119,221,0.35);
+    --red: #e24b4a;
+    --green: #639922;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── LAYOUT ── */
+  #shell {
+    display: grid;
+    grid-template-rows: 52px 1fr 40px;
+    grid-template-columns: 1fr 260px;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* ── HEADER ── */
+  #header {
+    grid-column: 1 / 3;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+  }
+  #header-left { display: flex; align-items: center; gap: 14px; }
+  #logo-circle {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--teal));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; color: #fff;
+    flex-shrink: 0;
+  }
+  #header h1 { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: 0.3px; }
+  #header-badge {
+    font-size: 10px; background: var(--accent2); color: #fff;
+    padding: 2px 8px; border-radius: 20px; letter-spacing: 0.5px;
+    font-weight: 600; text-transform: uppercase;
+  }
+  #header-right { display: flex; align-items: center; gap: 12px; }
+  #cam-status {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text2);
+  }
+  #cam-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text3); transition: background 0.3s;
+  }
+  #cam-dot.on { background: var(--teal); box-shadow: 0 0 6px var(--teal); }
+  #cam-dot.motion { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+
+  /* ── CANVAS AREA ── */
+  #canvas-area {
+    grid-column: 1 / 2;
+    position: relative;
+    overflow: hidden;
+    background: #070710;
+  }
+  #mainCanvas { display: block; width: 100%; height: 100%; }
+  #videoEl, #motionCanvas, #camPreviewCanvas { display: none; } /* Hanya mainCanvas yang tampil */
+
+  /* overlay info */
+  #overlay-info {
+    position: absolute; top: 14px; left: 14px;
+    display: flex; flex-direction: column; gap: 6px;
+    pointer-events: none;
+  }
+  .ov-badge {
+    background: rgba(10,10,20,0.7);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 5px 10px;
+    font-size: 11px; color: var(--text2);
+    display: flex; align-items: center; gap: 6px;
+    backdrop-filter: blur(4px);
+  }
+  .ov-badge strong { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; }
+  #motion-bar-wrap {
+    position: absolute; bottom: 14px; left: 14px; right: 14px;
+    pointer-events: none;
+  }
+  #motion-bar-label {
+    font-size: 10px; color: var(--text3); margin-bottom: 3px;
+    text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  #motion-bar-bg {
+    height: 5px; border-radius: 3px;
+    background: rgba(255,255,255,0.06);
+    position: relative; overflow: hidden;
+  }
+  #motion-bar-fill {
+    height: 100%; border-radius: 3px; width: 0%;
+    background: var(--accent);
+    transition: width 0.1s, background 0.2s;
+  }
+
+  /* ── RIGHT PANEL ── */
+  #right-panel {
+    grid-column: 2 / 3;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  #right-panel::-webkit-scrollbar { width: 4px; }
+  #right-panel::-webkit-scrollbar-track { background: transparent; }
+  #right-panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .panel-section {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-section:last-child { border-bottom: none; }
+  .section-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--text3); margin-bottom: 10px; font-weight: 600;
+  }
+
+  /* Camera button */
+  #startBtn {
+    width: 100%;
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--accent2);
+    background: rgba(127,119,221,0.12);
+    color: var(--accent);
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  #startBtn:hover { background: rgba(127,119,221,0.22); }
+  #startBtn.active {
+    background: rgba(229,75,74,0.12);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  #startBtn svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+  /* toggle for motion overlay */
+  #cam-overlay-tog {
+    width: 100%; margin-top: 10px;
+    padding: 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    color: var(--text3); font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.2s; text-align: center;
+  }
+  #cam-overlay-tog:hover { border-color: var(--accent); color: var(--accent); }
+  #cam-overlay-tog.on { background: rgba(127,119,221,0.12); border-color: var(--accent); color: var(--accent); }
+
+  /* Stats grid */
+  #stats-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    text-align: center;
+  }
+  .stat-card .sv { font-size: 18px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1; }
+  .stat-card .sl { font-size: 10px; color: var(--text3); margin-top: 3px; }
+
+  /* Spawn buttons */
+  #spawn-grid {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+  }
+  .spawn-btn {
+    padding: 10px 4px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    color: var(--text2);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+  }
+  .spawn-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(127,119,221,0.08); }
+  .spawn-btn canvas { width: 28px; height: 28px; }
+  #clearBtn {
+    width: 100%; margin-top: 6px;
+    padding: 7px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(229,75,74,0.3);
+    background: rgba(229,75,74,0.06);
+    color: var(--red);
+    font-size: 12px; cursor: pointer;
+    transition: all 0.2s;
+  }
+  #clearBtn:hover { background: rgba(229,75,74,0.15); }
+
+  /* Sliders */
+  .slider-row { margin-bottom: 10px; }
+  .slider-row:last-child { margin-bottom: 0; }
+  .slider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+  .slider-name { font-size: 12px; color: var(--text2); }
+  .slider-val { font-size: 12px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%; height: 4px;
+    border-radius: 2px;
+    background: var(--bg2);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg2);
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  input[type=range]:hover::-webkit-slider-thumb { background: #9d97e8; }
+
+  /* Toggle buttons */
+  .toggle-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tog-btn {
+    flex: 1; min-width: 60px;
+    padding: 7px 4px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    color: var(--text2);
+    font-size: 11px; cursor: pointer;
+    transition: all 0.2s; text-align: center;
+  }
+  .tog-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .tog-btn.on { background: rgba(127,119,221,0.15); border-color: var(--accent); color: var(--accent); }
+
+  /* Gravity direction pad */
+  #grav-pad {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 4px; width: 120px; margin: 0 auto;
+  }
+  .gpad-btn {
+    padding: 7px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--bg2);
+    color: var(--text3); font-size: 16px; cursor: pointer;
+    transition: all 0.2s; text-align: center; line-height: 1;
+  }
+  .gpad-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .gpad-btn.on { background: rgba(127,119,221,0.15); border-color: var(--accent); color: var(--accent); }
+  .gpad-center {
+    padding: 5px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--bg2);
+    color: var(--text3); font-size: 10px; cursor: pointer;
+    text-align: center; transition: all 0.2s; line-height: 1.2;
+  }
+  .gpad-center:hover { color: var(--accent); border-color: var(--accent); }
+  .gpad-center.on { background: rgba(127,119,221,0.15); border-color: var(--accent); color: var(--accent); }
+
+  /* Status */
+  #status-bar {
+    grid-column: 1 / 3;
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px;
+    font-size: 11px; color: var(--text3);
+  }
+  #status-msg { max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #version { opacity: 0.4; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div id="shell">
+
+  <!-- HEADER -->
+  <header id="header">
+    <div id="header-left">
+      <div id="logo-circle">MF</div>
+      <h1>Pelacak Gerak &amp; Fisika</h1>
+      <span id="header-badge">Layar Penuh</span>
+    </div>
+    <div id="header-right">
+      <div id="cam-status">
+        <div id="cam-dot"></div>
+        <span id="cam-label">Kamera mati</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- CANVAS -->
+  <main id="canvas-area">
+    <video id="videoEl" autoplay playsinline muted></video>
+    <canvas id="motionCanvas"></canvas>
+    <canvas id="camPreviewCanvas"></canvas>
+    <canvas id="mainCanvas"></canvas>
+
+    <div id="overlay-info">
+      <div class="ov-badge">Objek: <strong id="ov-obj">0</strong></div>
+      <div class="ov-badge">FPS: <strong id="ov-fps">—</strong></div>
+      <div class="ov-badge">Interaksi: <strong id="ov-force">0</strong></div>
+    </div>
+
+    <div id="motion-bar-wrap">
+      <div id="motion-bar-label">Intensitas Gerakan</div>
+      <div id="motion-bar-bg"><div id="motion-bar-fill"></div></div>
+    </div>
+  </main>
+
+  <!-- RIGHT PANEL -->
+  <aside id="right-panel">
+
+    <!-- Camera -->
+    <div class="panel-section">
+      <div class="section-label">Kamera</div>
+      <button id="startBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+        </svg>
+        <span id="startBtnText">Mulai Kamera</span>
+      </button>
+      <button id="cam-overlay-tog" class="on">Sorotan Gerakan Layar</button>
+    </div>
+
+    <!-- Stats -->
+    <div class="panel-section">
+      <div class="section-label">Statistik</div>
+      <div id="stats-grid">
+        <div class="stat-card"><div class="sv" id="st-obj">0</div><div class="sl">Objek</div></div>
+        <div class="stat-card"><div class="sv" id="st-fps">—</div><div class="sl">FPS</div></div>
+        <div class="stat-card"><div class="sv" id="st-motion">0%</div><div class="sl">Gerakan</div></div>
+        <div class="stat-card"><div class="sv" id="st-force">0</div><div class="sl">Interaksi</div></div>
+      </div>
+    </div>
+
+    <!-- Spawn Objects -->
+    <div class="panel-section">
+      <div class="section-label">Tambah Objek</div>
+      <div id="spawn-grid">
+        <button class="spawn-btn" id="addCubeBtn">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <rect x="5" y="8" width="15" height="15" rx="2" fill="#7f77dd" opacity="0.8"/>
+            <path d="M5 8 L10 4 L25 4 L25 19 L20 23" stroke="#9d97e8" stroke-width="1" fill="none" opacity="0.5"/>
+            <line x1="20" y1="8" x2="25" y2="4" stroke="#9d97e8" stroke-width="1" opacity="0.5"/>
+          </svg>
+          Kubus
+        </button>
+        <button class="spawn-btn" id="addBallBtn">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <circle cx="14" cy="14" r="9" fill="#1d9e75" opacity="0.8"/>
+            <ellipse cx="11" cy="11" rx="3" ry="2" fill="white" opacity="0.25"/>
+          </svg>
+          Bola
+        </button>
+        <button class="spawn-btn" id="addTriBtn">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <polygon points="14,4 25,23 3,23" fill="#d85a30" opacity="0.8"/>
+            <polygon points="14,4 18,13 10,13" fill="white" opacity="0.12"/>
+          </svg>
+          Prisma
+        </button>
+        <button class="spawn-btn" id="addDiamBtn">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <polygon points="14,3 24,12 14,25 4,12" fill="#ef9f27" opacity="0.8"/>
+            <polygon points="14,3 19,12 14,12 9,12" fill="white" opacity="0.15"/>
+          </svg>
+          Berlian
+        </button>
+        <button class="spawn-btn" id="addStarBtn">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <polygon points="14,3 16.8,10.6 25,10.6 18.6,15.4 21,23 14,18 7,23 9.4,15.4 3,10.6 11.2,10.6" fill="#e24b4a" opacity="0.8"/>
+          </svg>
+          Bintang
+        </button>
+        <button class="spawn-btn" id="addHexBtn">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <polygon points="14,3 22.7,8 22.7,18 14,23 5.3,18 5.3,8" fill="#d4537e" opacity="0.8"/>
+            <polygon points="14,3 18.4,5.5 18.4,10.5 14,13 9.6,10.5 9.6,5.5" fill="white" opacity="0.12"/>
+          </svg>
+          Heksagon
+        </button>
+      </div>
+      <button id="clearBtn">Hapus Semua Objek</button>
+    </div>
+
+    <!-- Sensitivity & Gravity Strength -->
+    <div class="panel-section">
+      <div class="section-label">Parameter Fisika</div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-name">Sensitivitas Kamera</span>
+          <span class="slider-val" id="sensValLabel">20</span>
+        </div>
+        <input type="range" id="sensitivitySlider" min="5" max="50" value="20" step="1">
+      </div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-name">Kekuatan Gravitasi</span>
+          <span class="slider-val" id="gravValLabel">10</span>
+        </div>
+        <input type="range" id="gravSlider" min="0" max="30" value="10" step="1">
+      </div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-name">Daya Dorong Gerak</span>
+          <span class="slider-val" id="forceValLabel">20</span>
+        </div>
+        <input type="range" id="forceSlider" min="1" max="50" value="20" step="1">
+      </div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-name">Gesekan Udara</span>
+          <span class="slider-val" id="fricValLabel">1.5%</span>
+        </div>
+        <input type="range" id="fricSlider" min="0" max="5" value="1.5" step="0.1">
+      </div>
+    </div>
+
+    <!-- Gravity Direction -->
+    <div class="panel-section">
+      <div class="section-label">Arah Gravitasi</div>
+      <div id="grav-pad">
+        <div></div>
+        <button class="gpad-btn" data-dir="up" title="Atas">↑</button>
+        <div></div>
+        <button class="gpad-btn" data-dir="left" title="Kiri">←</button>
+        <button class="gpad-center on" data-dir="zero" title="Tanpa gravitasi">0G</button>
+        <button class="gpad-btn" data-dir="right" title="Kanan">→</button>
+        <div></div>
+        <button class="gpad-btn on" data-dir="down" title="Bawah">↓</button>
+        <div></div>
+      </div>
+    </div>
+
+    <!-- Options -->
+    <div class="panel-section">
+      <div class="section-label">Opsi Simulasi</div>
+      <div class="toggle-row">
+        <button class="tog-btn on" id="bounceBtn">Pantul</button>
+        <button class="tog-btn on" id="collideBtn">Tabrakan</button>
+        <button class="tog-btn" id="trailBtn">Jejak</button>
+        <button class="tog-btn on" id="shadowBtn">Bayangan</button>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- STATUS BAR -->
+  <footer id="status-bar">
+    <span id="status-msg">Klik "Mulai Kamera" untuk berinteraksi langsung di layar penuh!</span>
+    <span id="version">v2.0.0 · Fullscreen Motion Physics Tracker</span>
+  </footer>
+
+</div>
+
+<script>
+
+// ── DOM REFS ──
+const video = document.getElementById('videoEl');
+const mainCanvas = document.getElementById('mainCanvas');
+const motionCanvas = document.getElementById('motionCanvas');
+const camPreviewCanvas = document.getElementById('camPreviewCanvas');
+const ctx = mainCanvas.getContext('2d');
+const mCtx = motionCanvas.getContext('2d');
+const pCtx = camPreviewCanvas.getContext('2d');
+const statusMsg = document.getElementById('status-msg');
+const camDot = document.getElementById('cam-dot');
+const camLabel = document.getElementById('cam-label');
+const camOverlayTog = document.getElementById('cam-overlay-tog');
+
+// ── STATE ──
+let W, H;
+let cameraActive = false;
+let prevFrame = null;
+let motionData = new Uint8Array(0); // Menyimpan intensitas gerak per piksel kamera
+let objects = [];
+let particles = [];
+let trails = {};
+
+let bounceEnabled = true;
+let collideEnabled = true;
+let trailEnabled = false;
+let shadowEnabled = true;
+let showMotionOverlay = true;
+let gravDir = 'down';
+const gravVecs = { down:[0,1], up:[0,-1], left:[-1,0], right:[1,0], zero:[0,0] };
+
+let sensitivity = 20;
+let gravStrength = 10;
+let forceStrength = 20;
+let friction = 1.5;
+
+let totalMotion = 0;
+let activeInteractions = 0;
+let fps = 0, fpsCount = 0, fpsTimer = 0, lastTime = performance.now();
+
+// ── COLORS ──
+const PALETTES = [
+  ['#7f77dd','#534ab7','#3c3489'],
+  ['#1d9e75','#0f6e56','#085041'],
+  ['#d85a30','#993c1d','#712b13'],
+  ['#d4537e','#993556','#72243e'],
+  ['#378add','#185fa5','#0c447c'],
+  ['#ef9f27','#ba7517','#854f0b'],
+  ['#e24b4a','#a32d2d','#791f1f'],
+  ['#639922','#3b6d11','#27500a'],
+];
+function rndPal() { return PALETTES[Math.floor(Math.random()*PALETTES.length)]; }
+
+// ── RESIZE ──
+function resize() {
+  const area = document.getElementById('canvas-area');
+  if (!area) return;
+  W = area.clientWidth;
+  H = area.clientHeight;
+  mainCanvas.width = W; mainCanvas.height = H;
+}
+window.addEventListener('resize', resize);
+
+// ── PHYSICS OBJECT ──
+class PhysObj {
+  constructor(type) {
+    this.type = type;
+    this.x = W * (0.2 + Math.random()*0.6);
+    this.y = H * 0.1 + Math.random() * H * 0.3;
+    this.vx = (Math.random()-0.5)*5;
+    this.vy = (Math.random()-0.5)*5;
+    const baseSize = 18 + Math.random()*20;
+    this.size = baseSize;
+    this.rot = Math.random()*Math.PI*2;
+    this.rotV = (Math.random()-0.5)*0.07;
+    this.pal = rndPal();
+    this.mass = this.size / 22;
+    this.restitution = 0.55 + Math.random()*0.3;
+    this.id = Math.random().toString(36).slice(2);
+    this.glow = 0;
+  }
+
+  get fr() { return 1 - (friction/100); }
+
+  update(gx, gy, dt) {
+    const gs = gravStrength / 10;
+    this.vx += gx * gs * dt * 60;
+    this.vy += gy * gs * dt * 60;
+    
+    this.vx *= this.fr;
+    this.vy *= this.fr;
+
+    const maxV = 25;
+    const sp = Math.hypot(this.vx, this.vy);
+    if (sp > maxV) { this.vx = this.vx/sp*maxV; this.vy = this.vy/sp*maxV; }
+
+    this.x += this.vx * dt * 60;
+    this.y += this.vy * dt * 60;
+    this.rot += (this.rotV + this.vx * 0.012) * dt * 60;
+
+    this.glow += (0 - this.glow) * 0.05; // Fade out glow
+
+    if (trailEnabled) {
+      if (!trails[this.id]) trails[this.id] = [];
+      trails[this.id].push({x:this.x,y:this.y,t:Date.now()});
+      if (trails[this.id].length > 30) trails[this.id].shift();
+    } else {
+      delete trails[this.id];
+    }
+
+    const pad = this.size * 0.95;
+    if (bounceEnabled) {
+      if (this.x - pad < 0) { this.x = pad; this.vx = Math.abs(this.vx)*this.restitution; spawnImpact(this); }
+      if (this.x + pad > W) { this.x = W-pad; this.vx = -Math.abs(this.vx)*this.restitution; spawnImpact(this); }
+      if (this.y - pad < 0) { this.y = pad; this.vy = Math.abs(this.vy)*this.restitution; spawnImpact(this); }
+      if (this.y + pad > H) { this.y = H-pad; this.vy = -Math.abs(this.vy)*this.restitution; spawnImpact(this); }
+    } else {
+      if (this.x < -pad*2) this.x = W+pad;
+      if (this.x > W+pad*2) this.x = -pad;
+      if (this.y < -pad*2) this.y = H+pad;
+      if (this.y > H+pad*2) this.y = -pad;
+    }
+  }
+
+  draw(c) {
+    c.save();
+    c.translate(this.x, this.y);
+    c.rotate(this.rot);
+    const s = this.size;
+
+    const g = c.createLinearGradient(-s,-s,s,s);
+    g.addColorStop(0, this.pal[0]);
+    g.addColorStop(0.5, this.pal[1]);
+    g.addColorStop(1, this.pal[2]);
+
+    if (this.glow > 0.1) {
+      c.shadowColor = '#fff';
+      c.shadowBlur = this.glow * 25;
+    }
+
+    c.fillStyle = g;
+    c.strokeStyle = 'rgba(255,255,255,0.22)';
+    c.lineWidth = 1.5;
+
+    if (this.type==='cube') {
+      c.beginPath(); c.roundRect(-s,-s,s*2,s*2,4); c.fill(); c.stroke();
+      const d = s*0.38;
+      c.strokeStyle='rgba(255,255,255,0.2)'; c.lineWidth=1;
+      c.beginPath();
+      c.moveTo(-s,-s); c.lineTo(-s+d,-s-d);
+      c.moveTo(s,-s); c.lineTo(s+d,-s-d);
+      c.moveTo(s,s); c.lineTo(s+d,s-d);
+      c.moveTo(-s+d,-s-d); c.lineTo(s+d,-s-d);
+      c.moveTo(s+d,-s-d); c.lineTo(s+d,s-d);
+      c.stroke();
+      c.fillStyle='rgba(255,255,255,0.08)';
+      c.beginPath(); c.roundRect(-s,-s,s*2,s*0.55,4); c.fill();
+
+    } else if (this.type==='ball') {
+      c.beginPath(); c.arc(0,0,s,0,Math.PI*2); c.fill(); c.stroke();
+      const sh = c.createRadialGradient(-s*0.32,-s*0.32,s*0.04,-s*0.32,-s*0.32,s*0.85);
+      sh.addColorStop(0,'rgba(255,255,255,0.38)');
+      sh.addColorStop(1,'rgba(255,255,255,0)');
+      c.fillStyle=sh; c.beginPath(); c.arc(0,0,s,0,Math.PI*2); c.fill();
+
+    } else if (this.type==='tri') {
+      c.beginPath();
+      c.moveTo(0,-s*1.18); c.lineTo(s*1.02,s*0.78); c.lineTo(-s*1.02,s*0.78);
+      c.closePath(); c.fill(); c.stroke();
+      c.fillStyle='rgba(255,255,255,0.1)';
+      c.beginPath(); c.moveTo(0,-s*1.18); c.lineTo(s*0.42,-s*0.22); c.lineTo(-s*0.42,-s*0.22); c.closePath(); c.fill();
+
+    } else if (this.type==='diamond') {
+      c.beginPath();
+      c.moveTo(0,-s*1.2); c.lineTo(s,0); c.lineTo(0,s*1.2); c.lineTo(-s,0);
+      c.closePath(); c.fill(); c.stroke();
+      c.fillStyle='rgba(255,255,255,0.12)';
+      c.beginPath(); c.moveTo(0,-s*1.2); c.lineTo(s*0.5,-s*0.3); c.lineTo(0,0); c.lineTo(-s*0.5,-s*0.3); c.closePath(); c.fill();
+
+    } else if (this.type==='star') {
+      c.beginPath();
+      for(let i=0;i<5;i++){
+        const ao=i*Math.PI*2/5-Math.PI/2;
+        const ai=ao+Math.PI/5;
+        if(i===0) c.moveTo(Math.cos(ao)*s,Math.sin(ao)*s);
+        else c.lineTo(Math.cos(ao)*s,Math.sin(ao)*s);
+        c.lineTo(Math.cos(ai)*s*0.42,Math.sin(ai)*s*0.42);
+      }
+      c.closePath(); c.fill(); c.stroke();
+
+    } else if (this.type==='hex') {
+      c.beginPath();
+      for(let i=0;i<6;i++){
+        const a=i*Math.PI/3-Math.PI/6;
+        if(i===0) c.moveTo(Math.cos(a)*s,Math.sin(a)*s);
+        else c.lineTo(Math.cos(a)*s,Math.sin(a)*s);
+      }
+      c.closePath(); c.fill(); c.stroke();
+      c.fillStyle='rgba(255,255,255,0.09)';
+      c.beginPath();
+      for(let i=0;i<6;i++){
+        const a=i*Math.PI/3-Math.PI/6;
+        if(i===0) c.moveTo(Math.cos(a)*s*0.55,Math.sin(a)*s*0.55);
+        else c.lineTo(Math.cos(a)*s*0.55,Math.sin(a)*s*0.55);
+      }
+      c.closePath(); c.fill();
+    }
+
+    c.shadowBlur=0; c.restore();
+  }
+}
+
+function spawnImpact(obj) {
+  const sp = Math.hypot(obj.vx,obj.vy);
+  if (sp < 2) return;
+  for(let i=0;i<Math.min(6,Math.floor(sp));i++){
+    particles.push({
+      x:obj.x, y:obj.y,
+      vx:(Math.random()-0.5)*sp*0.7,
+      vy:(Math.random()-0.5)*sp*0.7,
+      life:1, maxLife:1,
+      color:obj.pal[0], size:2+Math.random()*3
+    });
+  }
+}
+
+// ── COLLISION ──
+function resolveCollisions() {
+  if (!collideEnabled) return;
+  for(let i=0;i<objects.length;i++){
+    for(let j=i+1;j<objects.length;j++){
+      const a=objects[i], b=objects[j];
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const dist=Math.hypot(dx,dy);
+      const minDist=a.size+b.size;
+      if(dist<minDist && dist>0.01){
+        const nx=dx/dist, ny=dy/dist;
+        const overlap=minDist-dist;
+        const tm=a.mass+b.mass;
+        a.x-=nx*overlap*(b.mass/tm);
+        a.y-=ny*overlap*(b.mass/tm);
+        b.x+=nx*overlap*(a.mass/tm);
+        b.y+=ny*overlap*(a.mass/tm);
+        const rvx=a.vx-b.vx, rvy=a.vy-b.vy;
+        const rv=rvx*nx+rvy*ny;
+        if(rv>0){
+          const e=Math.min(a.restitution,b.restitution);
+          const imp=2*rv*e/(tm);
+          a.vx-=imp*b.mass*nx; a.vy-=imp*b.mass*ny;
+          b.vx+=imp*a.mass*nx; b.vy+=imp*a.mass*ny;
+          if(Math.abs(rv)>2){ particles.push({x:(a.x+b.x)/2,y:(a.y+b.y)/2,vx:0,vy:0,life:1,maxLife:1,color:a.pal[0],size:4}); }
+        }
+      }
+    }
+  }
+}
+
+// ── MOTION DETECT ──
+function detectMotion() {
+  if(!cameraActive || video.readyState < 2) return;
+
+  const vw = motionCanvas.width;
+  const vh = motionCanvas.height;
+  
+  if (motionData.length !== vw * vh) {
+      motionData = new Uint8Array(vw * vh);
+  }
+
+  mCtx.drawImage(video, 0, 0, vw, vh);
+  const currentFrame = mCtx.getImageData(0, 0, vw, vh);
+  
+  let previewFrame = pCtx.createImageData(vw, vh);
+  
+  if (!prevFrame) {
+    prevFrame = currentFrame;
+    return;
+  }
+
+  const d = currentFrame.data;
+  const p = prevFrame.data;
+  const out = previewFrame.data;
+  
+  const thresh = (55 - sensitivity); 
+  
+  let totalDiff = 0;
+
+  for (let i = 0; i < d.length; i += 4) {
+    const diff = Math.abs(d[i] - p[i]) + Math.abs(d[i+1] - p[i+1]) + Math.abs(d[i+2] - p[i+2]);
+    totalDiff += diff;
+
+    if (diff > thresh) {
+      motionData[i/4] = diff;
+      out[i] = 127;     
+      out[i+1] = 119;   
+      out[i+2] = 221;
+      out[i+3] = 180;   
+    } else {
+      motionData[i/4] = 0;
+      out[i] = 0; out[i+1] = 0; out[i+2] = 0; out[i+3] = 0;
+    }
+  }
+
+  pCtx.putImageData(previewFrame, 0, 0);
+  prevFrame = currentFrame;
+
+  const maxPossibleDiff = vw * vh * 3 * 255;
+  totalMotion = Math.min(100, (totalDiff / maxPossibleDiff) * 100 * 15);
+
+  if (totalMotion > 2) { 
+    camDot.className = 'on motion'; 
+    camLabel.textContent = 'Mendeteksi Gerakan';
+  } else { 
+    camDot.className = 'on'; 
+    camLabel.textContent = 'Kamera Aktif';
+  }
+}
+
+// ── DRAW GRID ──
+function drawGrid(c) {
+  c.strokeStyle='rgba(127,119,221,0.05)';
+  c.lineWidth=1;
+  const sz=50;
+  for(let x=0;x<W;x+=sz){c.beginPath();c.moveTo(x,0);c.lineTo(x,H);c.stroke();}
+  for(let y=0;y<H;y+=sz){c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke();}
+}
+
+// ── MAIN LOOP ──
+let then = performance.now();
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((now-then)/1000, 0.05);
+  then = now;
+
+  fpsCount++;
+  fpsTimer+=dt;
+  if(fpsTimer>=0.5){ fps=Math.round(fpsCount/fpsTimer); fpsCount=0; fpsTimer=0; }
+
+  detectMotion();
+  
+  activeInteractions = 0;
+  
+  // Hitung properti Video "Cover" agar mappingnya presisi
+  let drawW = W, drawH = H, drawX = 0, drawY = 0;
+  if (cameraActive && video.readyState >= 2) {
+      const vRatio = video.videoWidth / video.videoHeight;
+      const cRatio = W / H;
+      if (vRatio > cRatio) {
+          drawW = H * vRatio;
+          drawX = (W - drawW) / 2;
+      } else {
+          drawH = W / vRatio;
+          drawY = (H - drawH) / 2;
+      }
+  }
+
+  const gv = gravVecs[gravDir];
+  const vw = motionCanvas.width;
+  const vh = motionCanvas.height;
+
+  for(const o of objects) {
+    // ── LOKAL FISIKA BERDASARKAN DETEKSI KAMERA ──
+    if (cameraActive && video.readyState >= 2 && motionData.length > 0) {
+        // Pemetaan dari ukuran layar asli (MainCanvas) ke Koordinat Kamera (motionCanvas)
+        let relX = (o.x - drawX) / drawW;
+        let relY = (o.y - drawY) / drawH;
+        
+        if (relX >= 0 && relX <= 1 && relY >= 0 && relY <= 1) {
+            const nx = 1 - relX; // Dibalik secara horizontal (Mirror Effect)
+            const ny = relY;
+            
+            const cx = Math.floor(nx * vw);
+            const cy = Math.floor(ny * vh);
+            const r = Math.max(3, Math.floor((o.size / drawW) * vw) + 2); // Radius pencarian
+            
+            let mSumX = 0, mSumY = 0, mCount = 0;
+            
+            for (let y = Math.max(0, cy - r); y <= Math.min(vh - 1, cy + r); y++) {
+                for (let x = Math.max(0, cx - r); x <= Math.min(vw - 1, cx + r); x++) {
+                    if (motionData[y * vw + x] > 0) {
+                        mSumX += x; mSumY += y; mCount++;
+                    }
+                }
+            }
+            
+            if (mCount > 2) { // Jika ada cukup gerakan di area objek
+                activeInteractions++;
+                
+                // Cari arah dari pusat titik gerak ke titik sentral objek
+                const lcx = mSumX / mCount;
+                const lcy = mSumY / mCount;
+                
+                let dx = cx - lcx; 
+                let dy = cy - lcy;
+                dx = -dx; // Balik kembali untuk ruang layar
+                
+                let dist = Math.hypot(dx, dy);
+                if (dist < 0.1) { dx = (Math.random()-0.5)*2; dy = -1; dist = 1; }
+                
+                // Dorong objek menggunakan kekuatan dari slider force
+                const fMag = (forceStrength / 2) * Math.min(2.5, mCount / 6);
+                o.vx += (dx / dist) * fMag;
+                o.vy += (dy / dist) * fMag;
+                o.glow = 1; // Beri efek bersinar
+            }
+        }
+    }
+    
+    o.update(gv[0]*0.009, gv[1]*0.009, dt);
+  }
+  
+  resolveCollisions();
+
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.18; p.vx*=0.96; p.life-=0.055;
+    if(p.life<=0) particles.splice(i,1);
+  }
+
+  ctx.clearRect(0,0,W,H);
+  
+  // ── MENGGAMBAR KAMERA FULL SCREEN ──
+  if (cameraActive && video.readyState >= 2) {
+      ctx.save();
+      // Melakukan mirroring pas di tengah-tengah video yang digambar
+      ctx.translate(drawX + drawW/2, 0);
+      ctx.scale(-1, 1);
+      ctx.translate(-(drawX + drawW/2), 0);
+      
+      // Menggambar video
+      ctx.drawImage(video, drawX, drawY, drawW, drawH);
+      
+      // Overlay area pergerakan warna ungu
+      if (showMotionOverlay) {
+          ctx.globalAlpha = 0.5;
+          ctx.drawImage(camPreviewCanvas, 0, 0, camPreviewCanvas.width, camPreviewCanvas.height, drawX, drawY, drawW, drawH);
+      }
+      ctx.restore();
+      
+      // Gelapkan sedikit agar objek di atasnya terlihat jelas
+      ctx.fillStyle = 'rgba(7, 7, 16, 0.4)';
+      ctx.fillRect(0, 0, W, H);
+  } else {
+      ctx.fillStyle='#070710';
+      ctx.fillRect(0,0,W,H);
+  }
+
+  drawGrid(ctx);
+
+  if(trailEnabled){
+    for(const id in trails){
+      const tr=trails[id];
+      if(tr.length<2) continue;
+      for(let ti=1;ti<tr.length;ti++){
+        const a2=ti/tr.length;
+        ctx.strokeStyle=`rgba(127,119,221,${a2*0.4})`;
+        ctx.lineWidth=a2*3;
+        ctx.lineCap='round';
+        ctx.beginPath();
+        ctx.moveTo(tr[ti-1].x,tr[ti-1].y);
+        ctx.lineTo(tr[ti].x,tr[ti].y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  for(const p of particles){
+    ctx.globalAlpha=p.life;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  if(shadowEnabled){
+    const gv2=gravVecs[gravDir];
+    for(const o of objects){
+      const sp2=Math.hypot(o.vx,o.vy);
+      const sh=Math.min(1,sp2/8);
+      let sx=o.x, sy=o.y;
+      if(gv2[1]>0) sy=H-8;
+      else if(gv2[1]<0) sy=8;
+      else if(gv2[0]>0) sx=W-8;
+      else if(gv2[0]<0) sx=8;
+      else { sy=H-8; }
+      ctx.fillStyle=`rgba(0,0,0,${0.15+sh*0.25})`;
+      const rx=gravDir==='left'||gravDir==='right'?6:o.size*0.85;
+      const ry=gravDir==='up'||gravDir==='down'?5:o.size*0.85;
+      ctx.beginPath();
+      ctx.ellipse(sx,sy,rx,ry,0,0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  for(const o of objects) o.draw(ctx);
+
+  if(objects.length===0){
+    ctx.fillStyle='rgba(127,119,221,0.3)';
+    ctx.font='15px system-ui';
+    ctx.textAlign='center';
+    ctx.fillText('Tambahkan objek menggunakan panel kanan →', W/2, H/2);
+    ctx.font='12px system-ui';
+    ctx.fillStyle='rgba(127,119,221,0.18)';
+    ctx.fillText('Lalu nyalakan kamera untuk mulai menyentuh mereka di layar', W/2, H/2+26);
+    ctx.textAlign='left';
+  } else if (!cameraActive) {
+    ctx.fillStyle='rgba(127,119,221,0.2)';
+    ctx.font='16px system-ui';
+    ctx.textAlign='center';
+    ctx.fillText('Nyalakan Kamera untuk berinteraksi', W/2, H/2);
+    ctx.textAlign='left';
+  }
+
+  updateUI();
+}
+
+function updateUI(){
+  const ovObj = document.getElementById('ov-obj');
+  const ovFps = document.getElementById('ov-fps');
+  const ovForce = document.getElementById('ov-force');
+  const stObj = document.getElementById('st-obj');
+  const stFps = document.getElementById('st-fps');
+  const stMotion = document.getElementById('st-motion');
+  const stForce = document.getElementById('st-force');
+  const motionBarFill = document.getElementById('motion-bar-fill');
+
+  if(ovObj) ovObj.textContent=objects.length;
+  if(ovFps) ovFps.textContent=fps||'—';
+  if(ovForce) ovForce.textContent=activeInteractions;
+  if(stObj) stObj.textContent=objects.length;
+  if(stFps) stFps.textContent=fps||'—';
+  if(stMotion) stMotion.textContent=Math.round(totalMotion)+'%';
+  if(stForce) stForce.textContent=activeInteractions;
+  if(motionBarFill) {
+    motionBarFill.style.width=totalMotion+'%';
+    const mc=totalMotion>40?'#d85a30':totalMotion>15?'#ef9f27':'#7f77dd';
+    motionBarFill.style.background=mc;
+  }
+}
+
+// ── CAMERA TRIGGER ──
+document.getElementById('startBtn').onclick = async function() {
+  if(cameraActive){
+    cameraActive=false;
+    if(video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop());
+    if(camDot) camDot.className=''; 
+    if(camLabel) camLabel.textContent='Kamera mati';
+    const startBtnText = document.getElementById('startBtnText');
+    if(startBtnText) startBtnText.textContent='Mulai Kamera';
+    this.classList.remove('active');
+    if(statusMsg) statusMsg.textContent='Kamera dimatikan';
+    totalMotion=0; prevFrame=null;
+    pCtx.clearRect(0,0,camPreviewCanvas.width,camPreviewCanvas.height);
+    return;
+  }
+  try{
+    if(statusMsg) statusMsg.textContent='Meminta akses kamera…';
+    const stream = await navigator.mediaDevices.getUserMedia({video:{width:320,height:240,facingMode:'user'}});
+    video.srcObject = stream;
+    
+    await new Promise(resolve => {
+      if (video.readyState >= 1) resolve();
+      else video.onloadedmetadata = resolve;
+    });
+    await video.play(); 
+    
+    motionCanvas.width = video.videoWidth || 320;
+    motionCanvas.height = video.videoHeight || 240;
+    camPreviewCanvas.width = video.videoWidth || 320;
+    camPreviewCanvas.height = video.videoHeight || 240;
+    
+    cameraActive=true; prevFrame=null;
+    if(camDot) camDot.className='on'; 
+    if(camLabel) camLabel.textContent='Kamera aktif';
+    const startBtnText = document.getElementById('startBtnText');
+    if(startBtnText) startBtnText.textContent='Matikan Kamera';
+    this.classList.add('active');
+    
+    if(statusMsg) statusMsg.textContent = 'Kamera aktif! Sentuh objek di layar secara langsung untuk memindahkannya!';
+  }catch(e){
+    if(statusMsg) statusMsg.textContent='Gagal akses kamera: '+e.message;
+  }
+};
+
+// ── SPAWN ──
+function addObj(type){ objects.push(new PhysObj(type)); }
+document.getElementById('addCubeBtn').onclick=()=>addObj('cube');
+document.getElementById('addBallBtn').onclick=()=>addObj('ball');
+document.getElementById('addTriBtn').onclick=()=>addObj('tri');
+document.getElementById('addDiamBtn').onclick=()=>addObj('diamond');
+document.getElementById('addStarBtn').onclick=()=>addObj('star');
+document.getElementById('addHexBtn').onclick=()=>addObj('hex');
+document.getElementById('clearBtn').onclick=()=>{ objects=[]; particles=[]; trails={}; };
+
+// ── SLIDERS ──
+document.getElementById('sensitivitySlider').oninput=function(){
+  sensitivity=+this.value;
+  document.getElementById('sensValLabel').textContent=this.value;
+};
+document.getElementById('gravSlider').oninput=function(){
+  gravStrength=+this.value;
+  document.getElementById('gravValLabel').textContent=this.value;
+};
+document.getElementById('forceSlider').oninput=function(){
+  forceStrength=+this.value;
+  document.getElementById('forceValLabel').textContent=this.value;
+};
+document.getElementById('fricSlider').oninput=function(){
+  friction=+this.value;
+  document.getElementById('fricValLabel').textContent=this.value+'%';
+};
+
+// ── GRAVITY PAD ──
+document.querySelectorAll('[data-dir]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('[data-dir]').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+    gravDir=btn.dataset.dir;
+  });
+});
+
+// ── TOGGLES ──
+function mkToggle(id, setter){
+  const b=document.getElementById(id);
+  if(!b) return;
+  b.addEventListener('click',()=>{
+    const v=!b.classList.contains('on');
+    b.classList.toggle('on',v);
+    setter(v);
+  });
+}
+mkToggle('bounceBtn',v=>bounceEnabled=v);
+mkToggle('collideBtn',v=>collideEnabled=v);
+mkToggle('trailBtn',v=>{ trailEnabled=v; if(!v) trails={}; });
+mkToggle('shadowBtn',v=>shadowEnabled=v);
+
+if (camOverlayTog) {
+  camOverlayTog.addEventListener('click', function() {
+    showMotionOverlay = !showMotionOverlay;
+    this.classList.toggle('on', showMotionOverlay);
+  });
+}
+
+// ── CLICK TO ADD ──
+mainCanvas.addEventListener('click',e=>{
+  if(objects.length>=60) return;
+  const rect=mainCanvas.getBoundingClientRect();
+  const sx=W/rect.width, sy=H/rect.height;
+  const x=(e.clientX-rect.left)*sx, y=(e.clientY-rect.top)*sy;
+  const types=['cube','ball','tri','diamond','star','hex'];
+  const o=new PhysObj(types[Math.floor(Math.random()*types.length)]);
+  o.x=x; o.y=y; o.vx=(Math.random()-0.5)*4; o.vy=(Math.random()-0.5)*4;
+  objects.push(o);
+});
+
+// ── INIT ──
+resize();
+addObj('cube'); addObj('ball'); addObj('tri');
+addObj('diamond'); addObj('ball'); addObj('hex');
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
